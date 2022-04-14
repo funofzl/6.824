@@ -1,0 +1,201 @@
+Test (2B): concurrent Start()s ...
+2022/03/04 14:08:38 [2] timeout and will begin selection round
+2022/03/04 14:08:38 [2] begin election in term --- [1] ---
+2022/03/04 14:08:38 [1] received the voteRequest from [2]
+2022/03/04 14:08:38 aaaaaaaaaaa
+2022/03/04 14:08:38 bbbbbbbbbbbbb
+2022/03/04 14:08:38 [2] lastLogIndex[-1] lastLogTerm[-1]
+2022/03/04 14:08:38 [0] received the voteRequest from [2]
+2022/03/04 14:08:38 aaaaaaaaaaa
+2022/03/04 14:08:38 bbbbbbbbbbbbb
+2022/03/04 14:08:38 [1] vote for [2] as follower
+2022/03/04 14:08:38 [2] lastLogIndex[-1] lastLogTerm[-1]
+2022/03/04 14:08:38 [0] vote for [2] as follower
+2022/03/04 14:08:38 [2]'s vote is [2]
+2022/03/04 14:08:38  #####  [2]  ######
+2022/03/04 14:08:38 [2] send hearteat to [0]
+2022/03/04 14:08:38 server heartbeat[0] {1 2 -1 -1 [] -1}
+2022/03/04 14:08:38 [2] send hearteat to [1]
+2022/03/04 14:08:38 server heartbeat[1] {1 2 -1 -1 [] -1}
+2022/03/04 14:08:38    !!  [0]
+2022/03/04 14:08:38 server[0] :term[1] leader[2] prevIndex[-1] prevTerm[-1] entities[[]] leaderCommit[-1]
+2022/03/04 14:08:38    !!  [1]
+2022/03/04 14:08:38 server[1] :term[1] leader[2] prevIndex[-1] prevTerm[-1] entities[[]] leaderCommit[-1]
+2022/03/04 14:08:38 [1] received the heartbeat from [2]       ## [1] ##
+2022/03/04 14:08:38 [1] old old old ----------------------------------------------------
+2022/03/04 14:08:38 [0] received the heartbeat from [2]       ## [1] ##
+2022/03/04 14:08:38 [0] old old old ----------------------------------------------------
+2022/03/04 14:08:38 [2] received the reply of heartbeat from [1]
+2022/03/04 14:08:38 [2] received the reply of heartbeat from [0]
+2022/03/04 14:08:38 real result [1] {0 false false}
+2022/03/04 14:08:38 real result [0] {0 false false}
+2022/03/04 14:08:38 [2] send hearteat to [0]
+2022/03/04 14:08:38 server heartbeat[0] {1 2 -1 -1 [] -1}
+2022/03/04 14:08:38 [2] send hearteat to [1]
+2022/03/04 14:08:38 server heartbeat[1] {1 2 -1 -1 [] -1}
+2022/03/04 14:08:38    !!  [0]
+2022/03/04 14:08:38 server[0] :term[1] leader[2] prevIndex[-1] prevTerm[-1] entities[[]] leaderCommit[-1]
+2022/03/04 14:08:38 [0] received the heartbeat from [2]       ## [1] ##
+2022/03/04 14:08:38 [0] old old old ----------------------------------------------------
+2022/03/04 14:08:38    !!  [1]
+2022/03/04 14:08:38 server[1] :term[1] leader[2] prevIndex[-1] prevTerm[-1] entities[[]] leaderCommit[-1]
+2022/03/04 14:08:38 [1] received the heartbeat from [2]       ## [1] ##
+2022/03/04 14:08:38 [1] old old old ----------------------------------------------------
+2022/03/04 14:08:38 [2] received the reply of heartbeat from [0]
+2022/03/04 14:08:38 real result [0] {0 false false}
+2022/03/04 14:08:38 [2] received the reply of heartbeat from [1]
+2022/03/04 14:08:38 real result [1] {0 false false}
+2022/03/04 14:08:38 [2] send hearteat to [0]
+2022/03/04 14:08:38 server heartbeat[0] {1 2 -1 -1 [] -1}
+2022/03/04 14:08:38 [2] send hearteat to [1]
+2022/03/04 14:08:38 server heartbeat[1] {1 2 -1 -1 [] -1}
+2022/03/04 14:08:38    !!  [0]
+2022/03/04 14:08:38 server[0] :term[1] leader[2] prevIndex[-1] prevTerm[-1] entities[[]] leaderCommit[-1]
+2022/03/04 14:08:38 [0] received the heartbeat from [2]       ## [1] ##
+2022/03/04 14:08:38 [0] old old old ----------------------------------------------------
+2022/03/04 14:08:38    !!  [1]
+2022/03/04 14:08:38 server[1] :term[1] leader[2] prevIndex[-1] prevTerm[-1] entities[[]] leaderCommit[-1]
+2022/03/04 14:08:38 [1] received the heartbeat from [2]       ## [1] ##
+2022/03/04 14:08:38 [1] old old old ----------------------------------------------------
+2022/03/04 14:08:38 [2] received the reply of heartbeat from [0]
+2022/03/04 14:08:38 real result [0] {0 false false}
+2022/03/04 14:08:38 [2] received the reply of heartbeat from [1]
+2022/03/04 14:08:38 real result [1] {0 false false}
+2022/03/04 14:08:38 [2] send hearteat to [0]
+2022/03/04 14:08:38 server heartbeat[0] {1 2 -1 -1 [] -1}
+2022/03/04 14:08:38 [2] send hearteat to [1]
+2022/03/04 14:08:38 server heartbeat[1] {1 2 -1 -1 [] -1}
+2022/03/04 14:08:38    !!  [0]
+2022/03/04 14:08:38 server[0] :term[1] leader[2] prevIndex[-1] prevTerm[-1] entities[[]] leaderCommit[-1]
+2022/03/04 14:08:38 [0] received the heartbeat from [2]       ## [1] ##
+2022/03/04 14:08:38 [0] old old old ----------------------------------------------------
+2022/03/04 14:08:38    !!  [1]
+2022/03/04 14:08:39 server[1] :term[1] leader[2] prevIndex[-1] prevTerm[-1] entities[[]] leaderCommit[-1]
+2022/03/04 14:08:39 [1] received the heartbeat from [2]       ## [1] ##
+2022/03/04 14:08:39 [1] old old old ----------------------------------------------------
+2022/03/04 14:08:39 [2] received the reply of heartbeat from [0]
+2022/03/04 14:08:39 real result [0] {0 false false}
+2022/03/04 14:08:39 [2] received the reply of heartbeat from [1]
+2022/03/04 14:08:39 real result [1] {0 false false}
+2022/03/04 14:08:39 check leader
+2022/03/04 14:08:39 check [0]
+2022/03/04 14:08:39 check end [0]
+2022/03/04 14:08:39 check [1]
+2022/03/04 14:08:39 check end [1]
+2022/03/04 14:08:39 check [2]
+2022/03/04 14:08:39 ---[2] ---===-- [1]
+2022/03/04 14:08:39 check end [2]
+2022/03/04 14:08:39 server[0] :term[1] leader[2] prevIndex[-1] prevTerm[-1] entities[[{1 1}]] leaderCommit[-1]
+2022/03/04 14:08:39 server[1] :term[1] leader[2] prevIndex[-1] prevTerm[-1] entities[[{1 1}]] leaderCommit[-1]
+2022/03/04 14:08:39    !!  [0]
+2022/03/04 14:08:39 server[0] :term[1] leader[2] prevIndex[-1] prevTerm[-1] entities[[{1 1}]] leaderCommit[-1]
+2022/03/04 14:08:39 aaaaaaaaaaaaaaaaaaaaaaaaaaa
+2022/03/04 14:08:39 append..............................
+2022/03/04 14:08:39 [0] receivede the log [[{1 1}]]
+2022/03/04 14:08:39    !!  [1]
+2022/03/04 14:08:39 server[1] :term[1] leader[2] prevIndex[-1] prevTerm[-1] entities[[{1 1}]] leaderCommit[-1]
+2022/03/04 14:08:39 aaaaaaaaaaaaaaaaaaaaaaaaaaa
+2022/03/04 14:08:39 append..............................
+2022/03/04 14:08:39 &{100 true false}
+2022/03/04 14:08:39 [1] receivede the log [[{1 1}]]
+2022/03/04 14:08:39 &{100 true false}
+2022/03/04 14:08:39 server[1] before: nextIndex[0] matchIndex[-1]
+2022/03/04 14:08:39 server[1] before: nextIndex[1] matchIndex[0]
+2022/03/04 14:08:39 server[0] before: nextIndex[0] matchIndex[-1]
+2022/03/04 14:08:39 server[0] before: nextIndex[1] matchIndex[0]
+2022/03/04 14:08:39 ===========================================================
+2022/03/04 14:08:39 server[0] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101}]] leaderCommit[0]
+2022/03/04 14:08:39 server[0] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101}]] leaderCommit[0]
+2022/03/04 14:08:39 server[1] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101}]] leaderCommit[0]
+2022/03/04 14:08:39 server[1] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101} {1 102} {1 103}]] leaderCommit[0]
+2022/03/04 14:08:39 server[0] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101} {1 102} {1 103}]] leaderCommit[0]
+2022/03/04 14:08:39    !!  [0]
+2022/03/04 14:08:39    !!  [0]
+2022/03/04 14:08:39 server[0] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101}]] leaderCommit[0]
+2022/03/04 14:08:39 aaa need to update commitIndex oldIndex[-1]  len(log)[1] leaderIndex[0]
+2022/03/04 14:08:39 [0] old_commitIndex[-1] rf.commitIndex[0]
+2022/03/04 14:08:39 aaaaaaaaaaaaaaaaaaaaaaaaaaa
+2022/03/04 14:08:39 append..............................
+2022/03/04 14:08:39 [0] receivede the log [[{1 100} {1 101}]]
+2022/03/04 14:08:39 &{100 true false}
+2022/03/04 14:08:39    !!  [1]
+2022/03/04 14:08:39 server[0] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101}]] leaderCommit[0]
+2022/03/04 14:08:39 server[1] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101} {1 102} {1 103} {1 104}]] leaderCommit[0]
+2022/03/04 14:08:39 server[0] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101} {1 102} {1 103} {1 104}]] leaderCommit[0]
+2022/03/04 14:08:39 server[0] before: nextIndex[1] matchIndex[0]
+2022/03/04 14:08:39 server[0] before: nextIndex[3] matchIndex[2]
+2022/03/04 14:08:39    !!  [0]
+2022/03/04 14:08:39 server[1] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101} {1 102} {1 103}]] leaderCommit[0]
+2022/03/04 14:08:39 aaa need to update commitIndex oldIndex[-1]  len(log)[1] leaderIndex[0]
+2022/03/04 14:08:39    !!  [1]
+2022/03/04 14:08:39 aaaaaaaaaaaaaaaaaaaaaaaaaaa
+2022/03/04 14:08:39 server[1] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101} {1 102} {1 103} {1 104}]] leaderCommit[0]
+2022/03/04 14:08:39 server[0] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101} {1 102} {1 103}]] leaderCommit[0]
+2022/03/04 14:08:39 aaaaaaaaaaaaaaaaaaaaaaaaaaa
+2022/03/04 14:08:39 append..............................
+2022/03/04 14:08:39 [0] receivede the log [[{1 100} {1 101} {1 102} {1 103}]]
+2022/03/04 14:08:39 &{100 true false}
+2022/03/04 14:08:39    !!  [1]
+2022/03/04 14:08:39 server[0] :term[1] leader[2] prevIndex[2] prevTerm[1] entities[[{1 102} {1 103} {1 104}]] leaderCommit[0]
+2022/03/04 14:08:39    !!  [0]
+2022/03/04 14:08:39 server[0] before: nextIndex[3] matchIndex[2]
+2022/03/04 14:08:39 server[0] before: nextIndex[7] matchIndex[6]
+2022/03/04 14:08:39    !!  [1]
+2022/03/04 14:08:39 server[0] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101} {1 102} {1 103} {1 104}]] leaderCommit[0]
+2022/03/04 14:08:39 server[1] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101} {1 102} {1 103} {1 104}]] leaderCommit[0]
+2022/03/04 14:08:39 [1] old_commitIndex[-1] rf.commitIndex[0]
+2022/03/04 14:08:39 aaaaaaaaaaaaaaaaaaaaaaaaaaa
+2022/03/04 14:08:39 append..............................
+2022/03/04 14:08:39 [1] receivede the log [[{1 100} {1 101} {1 102} {1 103}]]
+2022/03/04 14:08:39 &{100 true false}
+2022/03/04 14:08:39 aaaaaaaaaaaaaaaaaaaaaaaaaaa
+2022/03/04 14:08:39 server[1] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101}]] leaderCommit[0]
+2022/03/04 14:08:39 aaaaaaaaaaaaaaaaaaaaaaaaaaa
+2022/03/04 14:08:39    !!  [0]
+2022/03/04 14:08:39 server[0] :term[1] leader[2] prevIndex[2] prevTerm[1] entities[[{1 102} {1 103} {1 104}]] leaderCommit[0]
+2022/03/04 14:08:39 aaaaaaaaaaaaaaaaaaaaaaaaaaa
+2022/03/04 14:08:39 server[1] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101} {1 102} {1 103} {1 104}]] leaderCommit[0]
+2022/03/04 14:08:39 aaaaaaaaaaaaaaaaaaaaaaaaaaa
+2022/03/04 14:08:39 append..............................
+2022/03/04 14:08:39 [1] receivede the log [[{1 100} {1 101} {1 102} {1 103} {1 104}]]
+2022/03/04 14:08:39 &{100 true false}
+2022/03/04 14:08:39 server[1] :term[1] leader[2] prevIndex[0] prevTerm[1] entities[[{1 100} {1 101} {1 102} {1 103} {1 104}]] leaderCommit[0]
+2022/03/04 14:08:39    !!  [1]
+2022/03/04 14:08:39 [0] timeout and will begin selection round
+2022/03/04 14:08:39 [0] begin election in term --- [2] ---
+2022/03/04 14:08:39 [0] timeout and will begin selection round
+2022/03/04 14:08:39 [0] begin election in term --- [3] ---
+2022/03/04 14:08:39 [0] timeout and will begin selection round
+2022/03/04 14:08:39 [0] begin election in term --- [4] ---
+2022/03/04 14:08:40 [0] timeout and will begin selection round
+2022/03/04 14:08:40 [0] begin election in term --- [5] ---
+2022/03/04 14:08:40 [0] timeout and will begin selection round
+2022/03/04 14:08:40 [0] begin election in term --- [6] ---
+2022/03/04 14:08:40 [0] timeout and will begin selection round
+2022/03/04 14:08:40 [0] begin election in term --- [7] ---
+2022/03/04 14:08:41 [0] timeout and will begin selection round
+2022/03/04 14:08:41 [0] begin election in term --- [8] ---
+2022/03/04 14:08:41 [0] timeout and will begin selection round
+2022/03/04 14:08:41 [0] begin election in term --- [9] ---
+2022/03/04 14:08:41 [0] timeout and will begin selection round
+2022/03/04 14:08:41 [0] begin election in term --- [10] ---
+2022/03/04 14:08:42 [0] timeout and will begin selection round
+2022/03/04 14:08:42 [0] begin election in term --- [11] ---
+2022/03/04 14:08:42 [0] timeout and will begin selection round
+2022/03/04 14:08:42 [0] begin election in term --- [12] ---
+2022/03/04 14:08:42 [0] timeout and will begin selection round
+2022/03/04 14:08:42 [0] begin election in term --- [13] ---
+2022/03/04 14:08:42 [0] timeout and will begin selection round
+2022/03/04 14:08:42 [0] begin election in term --- [14] ---
+2022/03/04 14:08:43 [0] timeout and will begin selection round
+2022/03/04 14:08:43 [0] begin election in term --- [15] ---
+2022/03/04 14:08:43 [0] timeout and will begin selection round
+2022/03/04 14:08:43 [0] begin election in term --- [16] ---
+2022/03/04 14:08:44 [0] timeout and will begin selection round
+2022/03/04 14:08:44 [0] begin election in term --- [17] ---
+2022/03/04 14:08:44 [0] timeout and will begin selection round
+2022/03/04 14:08:44 [0] begin election in term --- [18] ---
+2022/03/04 14:08:44 [0] timeout and will begin selection round
+2022/03/04 14:08:44 [0] begin election in term --- [19] ---
+signal: interrupt
+FAIL	6.824/raft	6.292s

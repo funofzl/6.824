@@ -524,11 +524,11 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 				index1, _, ok := rf.Start(cmd)
 				if ok {
 					index = index1
-					DPrintf("index [%v]  ^^^^^^^^^^^^^^^^^^^^^^^^^^^   server[%d] \n", index, rf.me)
 					break
 				}
 			}
 		}
+		DPrintf("index   ^^^^^^^^^^^^^^^^^^^^^^^^^^^     [%v] \n", index)
 		if index != -1 {
 			// somebody claimed to be the leader and to have
 			// submitted our command; wait a while for agreement.

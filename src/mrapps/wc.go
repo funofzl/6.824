@@ -1,3 +1,9 @@
+/*
+ * @Author: lxk
+ * @Date: 2022-02-22 21:50:25
+ * @LastEditors: lxk
+ * @LastEditTime: 2022-02-23 14:26:38
+ */
 package main
 
 //
@@ -6,10 +12,13 @@ package main
 // go build -buildmode=plugin wc.go
 //
 
-import "6.824/mr"
-import "unicode"
-import "strings"
-import "strconv"
+import (
+	"strconv"
+	"strings"
+	"unicode"
+
+	"6.824/mr"
+)
 
 //
 // The map function is called once for each file of input. The first

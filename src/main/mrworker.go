@@ -1,3 +1,9 @@
+/*
+ * @Author: lxk
+ * @Date: 2022-02-22 21:50:25
+ * @LastEditors: lxk
+ * @LastEditTime: 2022-02-23 14:04:55
+ */
 package main
 
 //
@@ -10,11 +16,14 @@ package main
 // Please do not change this file.
 //
 
-import "6.824/mr"
-import "plugin"
-import "os"
-import "fmt"
-import "log"
+import (
+	"fmt"
+	"log"
+	"os"
+	"plugin"
+
+	"6.824/mr"
+)
 
 func main() {
 	if len(os.Args) != 2 {
