@@ -458,15 +458,23 @@ func (rf *Raft) AppendEntity(args *AppendEntityArgs, reply *AppendEntityReply) {
 		return
 	}
 
-	remainPos := args.PrevLogIndex - baseIndex + 1
-	// ########################################################################//
-	// ------------  1. 可以更新了(先截断 以防后面有数据) ------------------------
-	DPrintf("server[%d]'log[%v]", rf.me, rf.log)
-	rf.log = rf.log[:remainPos]
-	rf.log = append(rf.log, args.Entries...)
-	rf.persist()
 	reply.Success = true
-	reply.NextIndex = rf.GetLastIndex() + 1
+	// 并发的时候进行判断
+	if len(args.Entries) > 0 {
+		argsfinalIndex := args.PrevLogIndex + len(args.Entries)
+		if argsfinalIndex <= rf.GetLastIndex() &&
+			args.Entries[len(args.Entries)-1].Term == rf.LogAt(argsfinalIndex).Term {
+		} else {
+			remainPos := args.PrevLogIndex - baseIndex + 1
+			// ########################################################################//
+			// ------------  1. 可以更新了(先截断 以防后面有数据) ------------------------
+			// DPrintf("server[%d]'log[%v]", rf.me, rf.log)
+			rf.log = rf.log[:remainPos]
+			rf.log = append(rf.log, args.Entries...)
+			rf.persist()
+			reply.NextIndex = rf.GetLastIndex() + 1
+		}
+	}
 	// ------------  2. 更新commitIndex和applyId -------------------------------
 	if rf.commitIndex < args.LeaderCommit { // 有更新的余地
 		// 更新为LastLogIndex 和 leaderCommit中的较小者
@@ -617,6 +625,7 @@ func (rf *Raft) sendSnapshot(server int, args InstallsnapshotArgs) {
 //#######################################################
 func (rf *Raft) broadCastAppendEnries() {
 	rf.mu.Lock()
+	DPrintf("leader[%d]broadCastAppendEnries...................................", rf.me)
 	args := AppendEntityArgs{
 		Term:         rf.curTerm,
 		LeaderId:     rf.me,
@@ -681,7 +690,7 @@ func (rf *Raft) broadCastAppendEnries() {
 				}
 				// 增大nextIndex matchIndex 判断N那个 更新commitIndex
 				DPrintf("server[%d] before: nextIndex[%d] matchIndex[%d]", server, rf.nextIndex[server], rf.matchIndex[server])
-				rf.matchIndex[server] = personalArgs.Entries[len(personalArgs.Entries)-1].Index
+				rf.matchIndex[server] = Max(rf.matchIndex[server], personalArgs.Entries[len(personalArgs.Entries)-1].Index)
 				rf.nextIndex[server] = rf.matchIndex[server] + 1
 				DPrintf("server[%d] after: nextIndex[%d] matchIndex[%d]", server, rf.nextIndex[server], rf.matchIndex[server])
 				// 如何更新commitIndex 需要大多数的follower都有了才行
@@ -778,7 +787,7 @@ func (rf *Raft) ticker() {
 	for rf.killed() == false {
 		switch rf.rule {
 		case Leader:
-			rf.broadCastAppendEnries()
+			go rf.broadCastAppendEnries()
 			// 时延
 			select {
 			case <-time.After(heartBeatInterval):
@@ -925,6 +934,10 @@ func (rf *Raft) GetLastIndex() int {
 }
 func (rf *Raft) GetFirstIndex() int {
 	return rf.log[0].Index
+}
+
+func (rf *Raft) LogAt(index int) LogEntry {
+	return rf.log[index-rf.GetFirstIndex()]
 }
 
 func outputArgs(where string, server int, args AppendEntityArgs) {

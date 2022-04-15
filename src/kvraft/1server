@@ -11,7 +11,7 @@ import (
 	"6.824/raft"
 )
 
-const Debug = false
+const Debug = true
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug {
@@ -20,7 +20,7 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 	return
 }
 
-const opTimeout = 1000 * time.Millisecond
+const opTimeout = 500 * time.Millisecond
 
 type Op struct {
 	// Your definitions here.
@@ -36,7 +36,6 @@ type Op struct {
 type Notification struct {
 	ClientId  int64
 	RequestId int64
-	Val       string
 }
 
 type KVServer struct {
@@ -49,9 +48,9 @@ type KVServer struct {
 	maxraftstate int // snapshot if log grows this big
 
 	// Your definitions here.
-	db                   map[string]string         // key/value pairs
-	dispatcher           map[int]chan Notification // 用于通知执行Start的协程可以返回client了
-	lastAppliedRequestId map[int64]int64           // last requestId for every client
+	db                   map[string]string          // key/value pairs
+	dispatcher           map[Notification]chan bool // 用于通知执行Start的协程可以返回client了
+	lastAppliedRequestId map[int64]int64            // last requestId for every client
 }
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
@@ -60,21 +59,32 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		reply.Err = ErrWrongLeader
 		return
 	}
+	if _, isLeader := kv.rf.GetState(); !isLeader {
+		reply.Err = ErrWrongLeader
+		return
+	}
 	// ----------------------------------------------------//
 	// 下面的判断是为了防止leader失败 切换新leader后再次执行
 	// 只要log被commit 那就
-	// ok 代表存在 直接接收即可
-	// 即使正在apply 还没有创建 也不碍事 这里创建也一样 但是这里构造的index就不能apply了
-	command := Op{
-		Name:      "Get",
-		Key:       args.Key,
+	notify := Notification{
 		ClientId:  args.ClientId,
 		RequestId: args.RequestId,
 	}
-	index, _, isLeader := kv.rf.Start(command)
-	if !isLeader {
-		reply.Err = ErrWrongLeader
-		return
+	exists, ch := kv.getChannel(notify)
+	// ok 代表存在 直接接收即可
+	// 即使正在apply 还没有创建 也不碍事 这里创建也一样 但是这里构造的index就不能apply了
+	if !exists {
+		command := Op{
+			Name:      "Get",
+			Key:       args.Key,
+			ClientId:  args.ClientId,
+			RequestId: args.RequestId,
+		}
+		_, _, isLeader := kv.rf.Start(command)
+		if !isLeader {
+			reply.Err = ErrWrongLeader
+			return
+		}
 	}
 	/* *********************************************** //
 		不能都从applyChan读取 因为程序指令执行不确定性
@@ -86,14 +96,10 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		所以涉及到channel的东西尽可能一个协程来就好了
 	// *********************************************** */
 	// ====================================================== //
-	ch := kv.getChannel(index)
+
 	// 等待receiveApplier通知
 	select {
-	case notidy := <-ch:
-		if notidy.ClientId != args.ClientId || notidy.RequestId != args.RequestId {
-			reply.Err = ErrWrongLeader
-			return
-		}
+	case <-ch:
 		// get value from DB
 		kv.mu.Lock()
 		value, ok := kv.db[args.Key]
@@ -107,6 +113,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		}
 	case <-time.After(opTimeout):
 		DPrintf("[Server-%d] [Get] (%s) timeout", kv.me, args.Key)
+		// TODO: isLeader的判断是否需要 什么情况下才会isDuplicate
 		// _, isLeader := kv.rf.GetState()
 		// if isLeader && kv.isDuplicate(args.ClientId, args.RequestId) {
 		if kv.isDuplicate(args.ClientId, args.RequestId) {
@@ -125,7 +132,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		}
 	}
 	kv.mu.Lock()
-	delete(kv.dispatcher, index)
+	delete(kv.dispatcher, notify)
 	kv.mu.Unlock()
 	DPrintf("[Server-%d] [Get] (%s) %s", kv.me, args.Key, reply.Err)
 }
@@ -136,29 +143,35 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		reply.Err = ErrWrongLeader
 		return
 	}
-	// ----------------------------------------------------//
-	command := Op{
-		Name:      args.Op,
-		Key:       args.Key,
-		Val:       args.Value,
-		ClientId:  args.ClientId,
-		RequestId: args.RequestId,
-	}
-	index, _, isLeader := kv.rf.Start(command)
-	if !isLeader {
+	if _, isLeader := kv.rf.GetState(); !isLeader {
 		reply.Err = ErrWrongLeader
 		return
 	}
-	// ====================================================== //
-
-	ch := kv.getChannel(index)
-	// 等待receiveApplier通知
-	select {
-	case notidy := <-ch:
-		if notidy.ClientId != args.ClientId || notidy.RequestId != args.RequestId {
+	// ----------------------------------------------------//
+	notify := Notification{
+		ClientId:  args.ClientId,
+		RequestId: args.RequestId,
+	}
+	exists, ch := kv.getChannel(notify)
+	if !exists {
+		command := Op{
+			Name:      args.Op,
+			Key:       args.Key,
+			Val:       args.Value,
+			ClientId:  args.ClientId,
+			RequestId: args.RequestId,
+		}
+		_, _, isLeader := kv.rf.Start(command)
+		if !isLeader {
 			reply.Err = ErrWrongLeader
 			return
 		}
+	}
+	// ====================================================== //
+
+	// 等待receiveApplier通知
+	select {
+	case <-ch:
 		reply.Err = OK
 	case <-time.After(opTimeout):
 		// 判断是否是过去的
@@ -172,19 +185,19 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		}
 	}
 	kv.mu.Lock()
-	delete(kv.dispatcher, index)
+	delete(kv.dispatcher, notify)
 	kv.mu.Unlock()
 	DPrintf("[Server-%d] [%s] (%s => %s) %s", kv.me, args.Op, args.Key, args.Value, reply.Err)
 }
 
-func (kv *KVServer) getChannel(index int) chan Notification {
+func (kv *KVServer) getChannel(notify Notification) (bool, chan bool) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-	_, ok := kv.dispatcher[index]
+	_, ok := kv.dispatcher[notify]
 	if !ok {
-		kv.dispatcher[index] = make(chan Notification, 1)
+		kv.dispatcher[notify] = make(chan bool, 1)
 	}
-	return kv.dispatcher[index]
+	return ok, kv.dispatcher[notify]
 }
 
 func (kv *KVServer) isDuplicate(clientId int64, RequestId int64) bool {
@@ -243,7 +256,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 
 	// You may need initialization code here.
 	kv.db = make(map[string]string)
-	kv.dispatcher = make(map[int]chan Notification)
+	kv.dispatcher = make(map[Notification]chan bool)
 	kv.lastAppliedRequestId = make(map[int64]int64)
 
 	kv.applyCh = make(chan raft.ApplyMsg)
@@ -282,14 +295,13 @@ func (kv *KVServer) receiveAndApply() {
 			ClientId:  op.ClientId,
 			RequestId: op.RequestId,
 		}
-		DPrintf("here ----------------- index[%d]--------------------", applyMsg.CommandIndex)
-		// ch := kv.getChannel(applyMsg.CommandIndex)
-		ch, ok := kv.dispatcher[applyMsg.CommandIndex]
+		ch, ok := kv.dispatcher[notify]
+		if !ok {
+			kv.dispatcher[notify] = make(chan bool, 1)
+		}
 		kv.mu.Unlock()
 		// 4. notify the Start goroutine.(follower not need to do this)
 		DPrintf("[Server-%d] Cid-Rid:[%d-%d] [%s] (%s => %s) applied", kv.me, op.ClientId, op.RequestId, op.Name, op.Key, op.Val)
-		if ok {
-			ch <- notify
-		}
+		ch <- true
 	}
 }
