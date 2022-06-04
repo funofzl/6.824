@@ -1,6 +1,7 @@
 package kvraft
 
 import (
+	"bytes"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -249,47 +250,119 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
+	// 尝试读取快照
+	kv.InstallSnapShot(persister.ReadSnapshot())
 	// You may need initialization code here.
-	// receive pplyMsg from raft
+	// receive applyMsg from raft
 	go kv.receiveAndApply()
 
 	return kv
 }
 
+// type ApplyMsg struct {
+// 	CommandValid bool
+// 	Command      interface{}
+// 	CommandIndex int
+
+// 	// For 2D:
+// 	SnapshotValid bool
+// 	Snapshot      []byte
+// 	SnapshotTerm  int
+// 	SnapshotIndex int
+// }
+
 func (kv *KVServer) receiveAndApply() {
 	// 不需要看是否killed 因为applyChan没有就自己停了
 	for !kv.killed() {
 		applyMsg := <-kv.applyCh
-		if applyMsg.CommandValid == false {
-			continue
-		}
-		op := applyMsg.Command.(Op)
-		kv.mu.Lock()
-		// 1. 首先判断是否是过去的
-		curReuqestId, ok := kv.lastAppliedRequestId[op.ClientId]
-		if !ok || op.RequestId > curReuqestId {
-			// 2. apply to state machine (kv.db)
-			switch op.Name {
-			case "Put":
-				kv.db[op.Key] = op.Val
-			case "Append":
-				kv.db[op.Key] += op.Val
-			}
-			// 3. modify the lastAppliedIndex for this client
-			kv.lastAppliedRequestId[op.ClientId] = op.RequestId
-		}
-		notify := Notification{
-			ClientId:  op.ClientId,
-			RequestId: op.RequestId,
-		}
-		DPrintf("here ----------------- index[%d]--------------------", applyMsg.CommandIndex)
-		// ch := kv.getChannel(applyMsg.CommandIndex)
-		ch, ok := kv.dispatcher[applyMsg.CommandIndex]
-		kv.mu.Unlock()
-		// 4. notify the Start goroutine.(follower not need to do this)
-		DPrintf("[Server-%d] Cid-Rid:[%d-%d] [%s] (%s => %s) applied", kv.me, op.ClientId, op.RequestId, op.Name, op.Key, op.Val)
-		if ok {
-			ch <- notify
+		if applyMsg.CommandValid {
+			kv.ApplyCommand(applyMsg)
+		} else if applyMsg.SnapshotValid {
+			kv.ApplySnapShot(applyMsg)
 		}
 	}
+}
+
+func (kv *KVServer) ApplyCommand(applyMsg raft.ApplyMsg) {
+	op, ok := applyMsg.Command.(Op)
+	if !ok {
+		return
+	}
+	kv.mu.Lock()
+	// 1. <<<<<<<< 首先判断是否是过去的 >>>>>>>>
+	curReuqestId, ok := kv.lastAppliedRequestId[op.ClientId]
+	if !ok || op.RequestId > curReuqestId {
+		// <<<<<<<< 2. apply to state machine (kv.db) >>>>>>>
+		switch op.Name {
+		case "Put":
+			kv.db[op.Key] = op.Val
+		case "Append":
+			kv.db[op.Key] += op.Val
+		}
+		// <<<<<<<< 3. modify the lastAppliedIndex for this client >>>>>>>
+		kv.lastAppliedRequestId[op.ClientId] = op.RequestId
+	}
+	notify := Notification{
+		ClientId:  op.ClientId,
+		RequestId: op.RequestId,
+	}
+	ch, ok := kv.dispatcher[applyMsg.CommandIndex]
+	// 4. <<<<<<<< judge if need to snapshot >>>>>>>
+	if kv.maxraftstate != -1 && kv.rf.GetRaftStateSize() >= kv.maxraftstate {
+		kv.TrySnapshot(applyMsg.CommandIndex)
+	}
+	kv.mu.Unlock()
+	// <<<<<<<<   5. notify the Start goroutine.(follower not need to do this) >>>>>>>
+	DPrintf("[Server-%d] Cid-Rid:[%d-%d] [%s] (%s => %s) applied", kv.me, op.ClientId, op.RequestId, op.Name, op.Key, op.Val)
+	if ok {
+		ch <- notify
+	}
+	// -------------------------------------------------------------//
+	// 对于新的Leader client发起的重复请求会超时
+	// 这时会发现已经请求已经旧了旧直接返回(Put&Append)或者读取(Get)
+	// 对于单个Client的读取来说，即使是并发 其实也没有什么严格的顺序的 因为网络和指令执行原因
+	// 所以假如切换新的leader之后，client后发起的请求正常返回，上一个重复请求因为延时后返回也没什么大问题
+	// -------------------------------------------------------------//
+}
+
+func (kv *KVServer) ApplySnapShot(applyMsg raft.ApplyMsg) {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	if kv.rf.CondInstallSnapshot(applyMsg.SnapshotTerm, applyMsg.SnapshotIndex, applyMsg.Snapshot) {
+		kv.InstallSnapShot(applyMsg.Snapshot)
+	}
+}
+
+// 安装快照
+// 1. Start初始化时
+// 2. Raft的InstallSnapShot时
+func (kv *KVServer) InstallSnapShot(snapshot []byte) {
+	// 上层函数ApplySnapshot已加锁 | Start不需要
+	if snapshot == nil || len(snapshot) == 0 {
+		return
+	}
+	b := bytes.NewBuffer(snapshot)
+	d := labgob.NewDecoder(b)
+	var db map[string]string
+	var lastAppliedRequestId map[int64]int64
+	if d.Decode(&lastAppliedRequestId) != nil || d.Decode(&db) != nil {
+		DPrintf("KVSERVER %d read persister got a problem!!!!!!!!!!", kv.me)
+	} else {
+		kv.lastAppliedRequestId = lastAppliedRequestId
+		kv.db = db
+	}
+}
+
+// 生成快照
+// 每次接收applyMsg时都监测一下是否可以生成快照
+func (kv *KVServer) TrySnapshot(lastApplyIndex int) {
+	// snapshot the raft state
+	// 上层函数ApplyCommand已加锁
+	b := new(bytes.Buffer)
+	e := labgob.NewEncoder(b)
+	// encode the state(DB) and lastRequestId of all clients
+	e.Encode(kv.lastAppliedRequestId)
+	e.Encode(kv.db)
+	// 把已经apply的状态都持久化
+	kv.rf.Snapshot(lastApplyIndex, b.Bytes())
 }

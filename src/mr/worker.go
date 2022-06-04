@@ -2,7 +2,7 @@
  * @Author: lxk
  * @Date: 2022-02-22 21:50:25
  * @LastEditors: lxk
- * @LastEditTime: 2022-02-26 14:05:07
+ * @LastEditTime: 2022-06-04 14:30:37
  */
 package mr
 
@@ -12,11 +12,13 @@ import (
 	"hash/fnv"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/rpc"
 	"os"
 	"sort"
+	"time"
 )
 
 //
@@ -34,28 +36,12 @@ func (a ByKey) Len() int           { return len(a) }
 func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
-// worker有两种角色
-type RuleType int
-
-const (
-	Idle    RuleType = 0
-	Mapper  RuleType = 1
-	Reducer RuleType = 2
-)
+const waitTime = 1 * time.Second
 
 // 需要一个调用Call对象
 type Workerr struct {
-	IsDone     bool     // 是否已经完成 用于coordinator的返回
-	Rule       RuleType // Map 还是reduce
-	workerIdx  int      // 所有的worker在一起(决定连接的scoket)
-	ReducerIdx int      // Reducer 应该处理哪些文件
-	ReduceNum  int      // Reducer数量
-	TargetPos  string   // task的目标文件位置
-
-	ReduceBeginChan chan []int  // coordinator告诉reduce开始工作(哪个mapper)
-	workChan        chan string // 接受下一步的指令(worker listen后进行设置 主协程开始工作)
-
-	f *os.File // 用于存储reduce的结果
+	workerId string // 一个唯一Id 用于标记worker
+	TaskInfo        // task 信息
 }
 
 //
@@ -74,28 +60,30 @@ func ihash(key string) int {
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 	// Your worker implementation here.
-	// 1. 创建一个worker
-	w := &Workerr{
-		IsDone:          false,
-		ReduceBeginChan: make(chan []int, 1),
-		workChan:        make(chan string, 1),
+	// -----------------    1. 创建一个worker ---------------------
+	w := &Workerr{}
+
+	// 随机一个WorkerIdx
+	rand.Seed(time.Now().UnixNano())
+	var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	n := 4
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
 	}
-
-	// 2. 请求 Task
-	CallTaskReq(w)
+	w.workerId = string(b)
+	// 开启监听
 	w.server()
-
-	// 因为可能多次执行 所以写在循环里
 	for {
-		if w.Rule == Mapper {
-			// 如果是mapper 还需要请求reduceNum
-			MaxReduceNum := CallReduceNumReq()
-
-			// 3. Create file
+		// --------------------   2. 请求 Task   ----------------------
+		CallTaskReq(w)
+		switch w.Role {
+		case Mapper:
+			// -----------   3. Create files (intermediate files) ---------
 			var err error
 			var mappedFiles []*os.File
-			for i := 0; i < MaxReduceNum; i++ {
-				filename := fmt.Sprintf("mr-%d-%d", w.workerIdx, i)
+			for i := 0; i < w.ReduceNum; i++ {
+				filename := fmt.Sprintf("mr-%d-%d", w.PartIndex, i)
 				if _, err := os.Stat(filename); err != nil {
 					if os.IsNotExist(err) {
 						_, err = os.Create(filename)
@@ -104,19 +92,14 @@ func Worker(mapf func(string, string) []KeyValue,
 						}
 					}
 				}
-				f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0666)
+				f, err := os.OpenFile(filename, os.O_WRONLY, 0666)
 				if err != nil {
 					fmt.Printf("File Create Failed: %s\n", filename)
 				}
-				s, _ := f.Stat()
-				fmt.Printf("%s -- %d", filename, s.Size())
-				// for f := range mappedFiles {
-				// if f.
-				// }
 				mappedFiles = append(mappedFiles, f)
 			}
-			// 4. Work
-			filename := w.TargetPos
+			// ------------------  4. Read input file  -------------------
+			filename := w.FileName
 			file, err := os.OpenFile(filename, os.O_RDONLY, 0666)
 			if err != nil {
 				log.Fatalf("cannot open %v", filename)
@@ -126,21 +109,25 @@ func Worker(mapf func(string, string) []KeyValue,
 				log.Fatalf("cannot read %v", filename)
 			}
 			file.Close()
+
+			// -------------  5. Work and Write to intermediate file ----------
 			kva := mapf(filename, string(content))
 
 			for _, kv := range kva {
 				hash_value := ihash(kv.Key)
-				reduceIdx := hash_value % MaxReducerNum
+				reduceIdx := hash_value % w.ReduceNum
 				// 先存起来 一起写入算了
 				enc := json.NewEncoder(mappedFiles[reduceIdx])
 				enc.Encode(&kv)
 			}
+			// fmt.Printf("Write Succeed: worker[%s]\n", w.workerId)
 
-			fmt.Printf("Write Succeed: worker[%d]\n", w.workerIdx)
-			// 5. 通知coordinator
+			// ------------------- 6. 通知coordinator -----------------
 			CallDoneCommit(w)
-		} else if w.Rule == Reducer {
-			outFile := fmt.Sprintf("mr-out-%d", w.ReducerIdx)
+
+		case Reducer:
+			// -------------------  3. Open output file --------------
+			outFile := fmt.Sprintf("mr-out-%d", w.PartIndex)
 			var err error
 			if _, err = os.Stat(outFile); err != nil {
 				if os.IsNotExist(err) {
@@ -154,29 +141,21 @@ func Worker(mapf func(string, string) []KeyValue,
 					return
 				}
 			}
-			w.f, err = os.OpenFile(outFile, os.O_WRONLY, 0666)
+			file, err := os.OpenFile(outFile, os.O_WRONLY, 0666)
 			if err != nil {
 				fmt.Printf("Reduce Open Output File Failed: %s\n", outFile)
 				return
 			}
-			// 文件打开失败怎么办
 
-			// Work
-			// 这里只能等待一个Mapper完成之后再进行工作(worker->coordinator->worker)
-			// 所有mapper完成后 需要coordinator调用开始函数 使reducer知道开始work
-			// 这里可以写一个for 循环 + select 自己定制延时行为(以免太长时间没有相应)
-			mapperIdxArr := <-w.ReduceBeginChan
-			// 开始读取mapperIdx生成的文件
+			// ---------------- 4. Read intermediate files  --------------------
 			intermediate := []KeyValue{}
-			for _, mapperIdx := range mapperIdxArr {
-				mappedFile := fmt.Sprintf("mr-%d-%d", mapperIdx, w.workerIdx)
-				fmt.Println(mappedFile)
+			for mapperIdx := 0; mapperIdx < w.MapNum; mapperIdx++ {
+				mappedFile := fmt.Sprintf("mr-%d-%d", mapperIdx, w.PartIndex)
+				// fmt.Println(mappedFile)
 				f, err := os.OpenFile(mappedFile, os.O_RDONLY, 0666)
 				if err != nil {
 					fmt.Printf("File Open Failed: file[%s]\n", mappedFile)
 				}
-				stat, _ := f.Stat()
-				fmt.Println(stat.Size())
 				// 从content中读取kv
 				dec := json.NewDecoder(f)
 				var kv KeyValue
@@ -186,9 +165,9 @@ func Worker(mapf func(string, string) []KeyValue,
 					}
 					intermediate = append(intermediate, kv)
 				}
-				fmt.Println(len(intermediate))
+				// fmt.Println(len(intermediate))
 			}
-			// 整合好数据 Reduce 开始
+			// ---------------  5. Sort and Reduce --------------------
 			sort.Sort(ByKey(intermediate))
 			//
 			i := 0
@@ -204,26 +183,20 @@ func Worker(mapf func(string, string) []KeyValue,
 				output := reducef(intermediate[i].Key, values)
 
 				// this is the correct format for each line of Reduce output.
-				fmt.Fprintf(w.f, "%v %v\n", intermediate[i].Key, output)
+				fmt.Fprintf(file, "%v %v\n", intermediate[i].Key, output)
 				i = j
 			}
-			s, _ := w.f.Stat()
-			fmt.Println("-------", s.Size())
-			w.f.Close()
+			// s, _ := file.Stat()
+			// fmt.Println("-------", s.Size())
+			file.Close()
 			// -------------------------
-			fmt.Printf("Write Succeed: worker[%d]", w.workerIdx)
-			// 5. 通知coordinator
+			// fmt.Printf("Write Succeed: worker[%s]", w.workerId)
+			// ------------------   6. 通知coordinator   ------------------
 			CallDoneCommit(w)
-		}
-
-		// 6.等待coordinator的下一步命令
-		// 在socket listen中 决定下一步的动作
-		nextInstruction := <-w.workChan
-		if nextInstruction == "Close" {
-			fmt.Println("Finished!!!!!!")
-			return
-		} else if nextInstruction == "Work" {
-			continue
+		case Idle:
+			time.Sleep(waitTime)
+		case Done:
+			return // 退出
 		}
 	}
 	// 通信测试 uncomment to send the Example RPC to the coordinator.
@@ -232,55 +205,20 @@ func Worker(mapf func(string, string) []KeyValue,
 
 }
 
-func (w *Workerr) ReduceBegin(args *ReduceBeginArgs, reply *ReduceBeginReply) error {
-	w.ReduceBeginChan <- args.MapperIdx
-	fmt.Printf("Reduce Begin: mapperIdx[%d]\n", args.MapperIdx)
-	return nil
-}
-
 func (w *Workerr) server() {
 	rpc.Register(w)
 	rpc.HandleHTTP()
 	//l, e := net.Listen("tcp", ":1234")
-	sockname := workerSock(w.workerIdx)
+	sockname := workerSock(w.workerId)
 	os.Remove(sockname)
 	l, e := net.Listen("unix", sockname)
 	if e != nil {
-		log.Fatalf("listen error: worker[%d] error[%s]", w.workerIdx, e)
+		log.Fatalf("listen error: worker[%d] error[%s]", w.PartIndex, e)
 	}
 	fmt.Println("Listening...")
 	go http.Serve(l, nil)
 }
 
-// 每隔10 coordinator就需要请求一次worker的Done方法
-// 如果没有完成工作 返回false  就需要重新分配给别的worker(因为时间太长意味着可能失败了)
-func (w *Workerr) Done(Args *WorkIsDoneArgs, Reply *WorkIsDoneReply) error {
-	Reply.IsDone = w.IsDone
-	Reply.Rule = w.Rule
-	return nil
-}
-
-func (w *Workerr) IssueByCoordinator(args *IssueByCoordinatorArgs, reply *IssueByCoordinatorReply) error {
-	// 这里只有两种选择 要么分配任务 要么close
-	if args.Close {
-		// 该关闭了
-		w.workChan <- "Close"
-	} else {
-		w.Rule = args.Rule
-		if w.Rule == Mapper {
-			w.TargetPos = args.TargetPos
-		} else if w.Rule == Reducer {
-			w.ReducerIdx = args.ReducerIdx
-		} else {
-			fmt.Println("IssueByCoordinator Failed: Unknown RuleType ", w.Rule)
-		}
-		fmt.Println("instruction get")
-		w.workChan <- "Work"
-	}
-	return nil
-}
-
-// 定义所有类型的Call 方法 比如请求任务 回复结果 ...
 func CallTaskReq(w *Workerr) {
 	// 请求的任务存储在 worker内
 	args := TaskReqArgs{}
@@ -288,49 +226,38 @@ func CallTaskReq(w *Workerr) {
 
 	ok := call("Coordinator.TaskReq", &args, &reply)
 	if ok {
-		// 判断Rule 并根据Rule类型决定接下来的动作
-		w.Rule = reply.Rule
-		w.workerIdx = reply.WorkerIdx
-		if reply.Rule == Mapper {
-			w.TargetPos = reply.TargetPos
+		// 判断Role 并根据Role类型决定接下来的动作
+		w.Role = reply.Role
+		w.PartIndex = reply.PartIndex
+		if reply.Role == Mapper {
+			w.FileName = reply.FileName
 			w.ReduceNum = reply.ReduceNum
 		} else {
-			w.ReducerIdx = reply.ReducerIdx
+			w.MapNum = reply.MapNum
 		}
-		fmt.Printf("TaskReq Succeed!: worker[%d]\n", w.workerIdx)
+		// fmt.Printf("TaskReq Succeed!: worker[%s]\n", w.workerId)
 	} else {
-		fmt.Println("TaskReq Failed!")
+		// fmt.Println("TaskReq Failed!")
 	}
-}
-
-func CallReduceNumReq() int {
-	args := ReduceNumReqArgs{}
-	reply := ReduceNumReqReply{}
-	ok := call("Coordinator.ReduceNumReq", &args, &reply)
-	if ok {
-		fmt.Printf("Call ReduceNum Succeed: reduceNum:[%d]\n", reply.ReduceNum)
-		return reply.ReduceNum
-	}
-	fmt.Println("Call ReduceNum Failed!")
-	return -1
 }
 
 func CallDoneCommit(w *Workerr) {
 	args := DoneCommitArgs{
 		Done:      true,
-		Rule:      w.Rule,
-		WorkerIdx: w.workerIdx,
+		WorkerId:  w.workerId,
+		Role:      w.Role,
+		PartIndex: w.PartIndex,
 	}
 	reply := DoneCommitReply{}
 	ok := call("Coordinator.DoneCommit", &args, &reply)
 	if !ok {
-		fmt.Printf("Call DoneCommit Failed: worker[%d]\n", w.workerIdx)
+		// fmt.Printf("Call DoneCommit Failed: worker[%s]\n", w.workerId)
 	} else {
-		fmt.Printf("Call DoneCommit Succeed: worker[%d]\n", w.workerIdx)
+		// fmt.Printf("Call DoneCommit Succeed: worker[%s]\n", w.workerId)
 	}
 }
 
-//
+// ----------------------- Don't Touch the following!!! ------------------------------------
 // example function to show how to make an RPC call to the coordinator.
 //
 // the RPC argument and reply types are defined in rpc.go.

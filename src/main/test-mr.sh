@@ -116,8 +116,7 @@ sleep 1
 
 # start multiple workers
 $TIMEOUT ../mrworker ../../mrapps/indexer.so &
-$TIMEOUT ../mrworker ../../mrapps/indexer.so & 
-$TIMEOUT ../mrworker ../../mrapps/indexer.so &
+$TIMEOUT ../mrworker ../../mrapps/indexer.so
 
 sort mr-out* | grep . > mr-indexer-all
 if cmp mr-indexer-all mr-correct-indexer.txt
@@ -131,7 +130,7 @@ fi
 
 wait
 
-exit 
+
 #########################################################
 echo '***' Starting map parallelism test.
 

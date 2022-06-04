@@ -3,7 +3,6 @@ package kvraft
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -311,7 +310,7 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 		atomic.StoreInt32(&done_partitioner, 1) // tell partitioner to quit
 
 		if partitions {
-			log.Printf("wait for partitioner................................................\n")
+			// log.Printf("wait for partitioner................................................\n")
 			<-ch_partitioner
 			// reconnect network and submit a request. A client may
 			// have submitted a request in a minority.  That request
@@ -337,11 +336,10 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 			}
 			cfg.ConnectAll()
 		}
-		DPrintf("here..........................................................................")
 
 		// log.Printf("wait for clients\n")
 		for i := 0; i < nclients; i++ {
-			log.Printf("read from clients %d=======================================================\n", i)
+			// log.Printf("read from clients %d=======================================================\n", i)
 			j := <-clnts[i]
 			// if j < 10 {
 			// 	log.Printf("Warning: client %d managed to perform only %d put operations in 1 sec?\n", i, j)

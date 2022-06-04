@@ -158,6 +158,24 @@ func (rf *Raft) getState() []byte {
 	return w.Bytes()
 }
 
+// // 用于传递给kvServer 进行snapShot 最多可以到commitIndex处
+// func (rf *Raft) GetIndexAndSnapshot() (int, []byte) {
+// 	rf.mu.Lock()
+// 	defer rf.mu.Unlock()
+// 	w := new(bytes.Buffer)
+// 	e := labgob.NewEncoder(w)
+// 	e.Encode(rf.curTerm)
+// 	e.Encode(rf.votedFor)
+// 	baseIndex := rf.GetFirstIndex()
+// 	e.Encode(rf.log[:rf.commitIndex-baseIndex+1])
+// 	return rf.commitIndex, w.Bytes()
+// }
+
+// KVServer调用判断是否需要snapshot
+func (rf *Raft) GetRaftStateSize() int {
+	return rf.persister.RaftStateSize()
+}
+
 //
 // save Raft's persistent state to stable storage,
 // where it can later be retrieved after a crash and restart.
@@ -190,7 +208,6 @@ func (rf *Raft) readPersist(data []byte) {
 		rf.curTerm = curTerm
 		rf.votedFor = votedFor
 		rf.log = log
-		rf.persist()
 	}
 }
 
@@ -257,7 +274,13 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		DPrintf("[%d] can not vote for [%d](small term)\n", rf.me, args.CandidateId)
 		return
 	}
-
+	// 不论能都投票成功 都要变到大的任期 任期不可能回退的 否则新旧之争可能不会结束
+	if args.Term > rf.curTerm {
+		rf.curTerm = args.Term
+		rf.votedFor = -1
+		rf.rule = Follower
+		rf.persist()
+	}
 	//	 要想投票 必须验证up-to-date
 	// 2. 判断up to date条件
 	selfLastLogIndex := rf.GetLastIndex()
@@ -280,12 +303,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// 就是说如果arg.term更新 就需要重置为follower 并设置为可以投票状态
 	// 这里意味着 follower和candidate都会在新的任期投给request(并更新到新的任期)
 	// 但是如果是同样的term  就不会再投票了(即使request数据更新 谁让request下手慢了呢 总不能一个时代投两次票吧)
-	if args.Term > rf.curTerm {
-		rf.curTerm = args.Term
-		rf.votedFor = -1
-		rf.rule = Follower
-		rf.persist()
-	}
+
 	if rf.votedFor == -1 || rf.votedFor == args.CandidateId {
 		rf.rule = Follower
 		rf.votedFor = args.CandidateId
@@ -480,9 +498,7 @@ func (rf *Raft) AppendEntity(args *AppendEntityArgs, reply *AppendEntityReply) {
 		// 更新为LastLogIndex 和 leaderCommit中的较小者
 		DPrintf("server[%d] commitIndex[%d] new_min[%d]", rf.me, rf.commitIndex, Min(args.LeaderCommit, rf.GetLastIndex()))
 		rf.commitIndex = Min(args.LeaderCommit, rf.GetLastIndex())
-		DPrintf("server[%d] commitIndex[%d]", rf.me, rf.commitIndex)
 		rf.applyCond.Broadcast()
-		DPrintf("server[%d] commitIndex[%d]", rf.me, rf.commitIndex)
 	}
 }
 
@@ -518,23 +534,24 @@ func (rf *Raft) Installsnapshot(args *InstallsnapshotArgs, reply *Installsnapsho
 	//    snapshot’s cluster configuration)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	defer rf.persist()
 	DPrintf("server[%d] is installing snapshot from leader", rf.me)
 	// 1. 判断term
 	if args.Term < rf.curTerm {
 		reply.Term = rf.curTerm
 		return
 	}
-	// 2. 更新heartbeat (和AppendEnttyRPC类似 需要更新heartbeat)
-	rf.heartsbeats <- true
-
-	rf.curTerm = args.Term
 	reply.Term = args.Term
+	if args.Term > rf.curTerm { // 新的任期需要重置votedFor
+		rf.curTerm, rf.votedFor = args.Term, -1
+		rf.persist()
+	}
 	//无条件认为对方是leader 自己转为follower
 	if rf.rule != Follower {
 		rf.rule = Follower
-		rf.votedFor = -1
 	}
+	// 2. 更新heartbeat (和AppendEnttyRPC类似 需要更新heartbeat)
+	rf.heartsbeats <- true
+
 	// ###################################################################//
 	// ---------------------------  snapshot逻辑 --------------------------------------
 	// 和提交的比 不需要和apply比较 判断快照是否比较旧了
@@ -562,6 +579,8 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 	// 判断是否install snapshot
 	// 上层service接收到snapshot后再调用CondInstallSnapshot
 	// 为什么不直接Install Snapshot然后通知service呢
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	if lastIncludedIndex <= rf.commitIndex {
 		// 赶上来了 不需要快照了
 		DPrintf("{Node %v} rejects the snapshot which lastIncludedIndex is %v because commitIndex %v is larger", rf.me, lastIncludedIndex, rf.commitIndex)
@@ -571,8 +590,6 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 		lastIncludedTerm == rf.log[lastIncludedIndex-rf.log[0].Index].Term {
 		rf.log = append([]LogEntry(nil), rf.log[lastIncludedIndex-rf.GetFirstIndex():]...)
 		rf.log[0].Command = nil
-		rf.log[0].Index = lastIncludedIndex
-		rf.log[0].Term = lastIncludedTerm
 	} else {
 		rf.log = append([]LogEntry(nil), LogEntry{
 			Term:    lastIncludedTerm,
@@ -752,12 +769,18 @@ func (rf *Raft) applier() {
 		for rf.lastApplied >= rf.commitIndex {
 			rf.applyCond.Wait()
 		}
-		commitIndex := rf.commitIndex
-		lastApplied := rf.lastApplied
-		firstIndex := rf.GetFirstIndex()
-		entrties := make([]LogEntry, commitIndex-lastApplied)
-		DPrintf("server[%d] will apply firstIndex[%d] commitId[%d] applyid[%d]", rf.me, firstIndex, commitIndex, lastApplied)
-		copy(entrties, rf.log[lastApplied+1-firstIndex:commitIndex-firstIndex+1])
+		// commitIndex := rf.commitIndex
+		// lastApplied := rf.lastApplied
+		// firstIndex := rf.GetFirstIndex()
+		// DPrintf("server[%d] will apply firstIndex[%d] commitId[%d] applyid[%d]", rf.me, firstIndex, commitIndex, lastApplied)
+		// entrties := append([]LogEntry{}, rf.log[lastApplied+1-firstIndex:commitIndex-firstIndex+1]...)
+		entrties := []LogEntry{}
+		for rf.lastApplied < rf.commitIndex && rf.lastApplied < rf.GetLastIndex() {
+			//for rf.lastApplied < rf.commitIndex {
+			rf.lastApplied += 1
+			//DPrintf("[ApplyEntry---] %d apply entry index %d, command %v, term %d, lastSSPindex %d",rf.me,rf.lastApplied,rf.getLogWithIndex(rf.lastApplied).Command,rf.getLogWithIndex(rf.lastApplied).Term,rf.lastSSPointIndex)
+			entrties = append(entrties, rf.LogAt(rf.lastApplied))
+		}
 		rf.mu.Unlock()
 		// 这个过程可能通过网络或者阻塞什么的 不能占用锁
 		for _, i := range entrties {
@@ -770,11 +793,11 @@ func (rf *Raft) applier() {
 		}
 
 		// 更新applyId
-		rf.mu.Lock()
-		// 不止这个协程提交 还有快照 可能自己提交的已经被快照覆盖了吧
-		// commitIndex也可以使用entities的长度进行计算
-		rf.lastApplied = Max(rf.lastApplied, commitIndex)
-		rf.mu.Unlock()
+		// rf.mu.Lock()
+		// // 不止这个协程提交 还有快照 可能自己提交的已经被快照覆盖了吧
+		// // commitIndex也可以使用entities的长度进行计算
+		// rf.lastApplied = Max(rf.lastApplied, commitIndex)
+		// rf.mu.Unlock()
 	}
 }
 
